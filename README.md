@@ -1,4 +1,4 @@
-# ratapprox
+# rminimax
 
 Source code for designing flexible polynomial and rational approximations to mathematical functions.
 

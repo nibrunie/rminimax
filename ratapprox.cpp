@@ -98,7 +98,10 @@ void printShortHelp() {
       << "                              the same values as in numF and denF.\n"
       << "--dom=[double,double]         Approximation interval.\n"
       << "--output=[string]             Path to the output file.\n"
-      << "                              By default string=./coeffs.sollya"
+      << "                              By default string=./coeffs.sollya\n"
+      << "--dispCoeff=[bin,dec,hex]     Display format for the approximation\n"
+      << "                              coefficients in the output file, if\n"
+      << "                              specified. 'hex' by default."
       << std::endl
       << std::endl;
 }
@@ -264,6 +267,7 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
   std::string functionstr = "exp(x)";
   std::string weightstr = "1";
   std::string outfilename = "coeffs.sollya";
+  std::string coeffDisplay = "%.RNa";
 
   shuntingyard sh;
   std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> nbasis;
@@ -309,6 +313,14 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
       factorizationEnabled = true;
     } else if (getCmdParameter(argv[i], "--factorF=", value)) {
       facformatstr = value;
+    } else if (getCmdParameter(argv[i], "--dispCoeff=", value)) {
+      if (strcmp("dec", value) == 0) {
+        coeffDisplay = "%.RNe";
+      } else if (strcmp("bin", value) == 0) {
+        coeffDisplay = "%.RNb";
+      } else {
+        coeffDisplay = "%.RNa";
+      }
     } else {
       std::cout << "Error: Illegal option: " << argv[i] << std::endl;
       printShortHelp();
@@ -1037,14 +1049,14 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
 
     coeffFile << "Numerator = [|" << endl;
     for (std::size_t i{0u}; i < num.size() - 1; ++i)
-      coeffFile << fpnum[i].toString("%.100RNf") << "," << std::endl;
-    coeffFile << fpnum[num.size() - 1].toString("%.100RNf") << "|];"
+      coeffFile << fpnum[i].toString(coeffDisplay) << "," << std::endl;
+    coeffFile << fpnum[num.size() - 1].toString(coeffDisplay) << "|];"
               << std::endl;
 
     coeffFile << "Denominator = [|" << endl;
     for (std::size_t i{0u}; i < den.size() - 1; ++i)
-      coeffFile << fpden[i].toString("%.100RNf") << "," << std::endl;
-    coeffFile << fpden[den.size() - 1].toString("%.100RNf") << "|];"
+      coeffFile << fpden[i].toString(coeffDisplay) << "," << std::endl;
+    coeffFile << fpden[den.size() - 1].toString(coeffDisplay) << "|];"
               << std::endl;
 
     coeffFile.close();

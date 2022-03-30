@@ -97,6 +97,9 @@ Option:                       Meaning:
 --dom=[double,double]         Approximation interval.
 --output=[string]             Path to the output file.
                               By default string=./coeffs.sollya
+--dispCoeff=[bin,dec,hex]     Display format for the approximation
+                              coefficients in the output file, if
+                              specified. 'hex' by default.
 ```
 
 ### Output

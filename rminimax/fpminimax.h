@@ -28,6 +28,26 @@ void fpminimax_kernel(std::vector<mpfr::mpreal> &lll_coeffs,
                       std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> &b,
                       mp_prec_t prec);
 
+void fpirls_kernel(
+    std::vector<mpfr::mpreal> &lllcoeffs,
+    std::vector<std::vector<mpfr::mpreal>> &svpcoeffs,
+    std::vector<mpfr::mpreal> const &x, std::vector<mpfr::mpreal> const &wx,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &target,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> &basis,
+    mp_prec_t prec);
+
+void fpirls(
+    std::vector<mpfr::mpreal> &fpnum, std::vector<mpfr::mpreal> &fpden,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &f,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &r,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &w,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> const &nbasis,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> const &dbasis,
+    std::vector<mpfr::mpreal> const &num, std::vector<mpfr::mpreal> const &den,
+    std::vector<mp_prec_t> const &nump, std::vector<mp_prec_t> const &denp,
+    std::pair<mpfr::mpreal, mpfr::mpreal> const &dom, std::size_t idx,
+    std::size_t itcount, mp_prec_t prec);
+
 void factorize(
     mpfr::mpreal &scale,
     std::vector<std::pair<std::vector<mpfr::mpreal>, std::size_t>> &factors,

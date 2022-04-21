@@ -238,6 +238,146 @@ void example(mp_prec_t prec) {
   std::cout << "fpminimax error = " << errfp_norm.second << std::endl;
 }
 
+void example2(mp_prec_t prec) {
+  // function to approximate
+  std::function<mpfr::mpreal(mpfr::mpreal)> f =
+      [](mpfr::mpreal x) -> mpfr::mpreal { return mpfr::atan(x); };
+
+  // weight function (here I just do unweighted approximation)
+  // you can use 1/f(x) if you want relative error approximations
+  std::function<mpfr::mpreal(mpfr::mpreal)> w =
+      [](mpfr::mpreal x) -> mpfr::mpreal {
+    return mpfr::mpreal(1.0) / mpfr::atan(x);
+  };
+
+  // the approximation interval (in this case [-1, 1])
+  auto dom = std::make_pair(mpfr::mpreal(1) << -13, mpfr::mpreal(1));
+  // the type of the approximation (in this case a degree 5 polynomial)
+  // the type is of the form (m, n) for a rational function, where m is the
+  // degree of the numerator and n is the degree of the denominator
+  auto type = std::make_pair(6u, 6u);
+
+  // the basis functions for the numerator (1, x, x^2,...)
+  std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> nbasis;
+  // the basis function for the denominator (1, x, x^2,...)
+  std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> dbasis;
+  std::vector<std::pair<mpfr::mpreal, mpfr::mpreal>> dbounds;
+
+  // construct the actual basis functions in the numerator and denominator
+  for (size_t i{0u}; i <= type.first; ++i)
+    nbasis.push_back([i](mpfr::mpreal x) -> mpfr::mpreal {
+      return mpfr::pow(x, 2 * i + 1);
+    });
+  for (size_t i{0u}; i <= type.second; ++i)
+    dbasis.push_back(
+        [i](mpfr::mpreal x) -> mpfr::mpreal { return mpfr::pow(x, 2 * i); });
+
+  // the general minimax approximation algorithm that computes the
+  // best approximation with real (i.e., multiprecision) coefficients
+  // (minimax is the analogous to Remez in Sollya)
+
+  mpfr::mpreal delta;
+  std::vector<mpfr::mpreal> num;
+  std::vector<mpfr::mpreal> den;
+  auto success = minimax(delta, num, den, dom, nbasis, dbasis, f, w, prec);
+  std::vector<mpfr::mpreal> numB = num;
+  std::vector<mpfr::mpreal> denB = den;
+
+  mpfr::mpreal scaleFactor = 1.0;
+  std::size_t vals = 1000;
+  for (int itx = 0; itx < vals - 1; ++itx) {
+    // parameters for the floating-point coefficient approximation
+    // (here single precision, float32 values)
+    std::vector<mp_prec_t> numPrec;
+    std::vector<mp_prec_t> denPrec;
+    std::vector<mp_exp_t> numExp;
+    std::vector<mp_exp_t> denExp;
+    std::vector<mpfr::mpreal> fpnum;
+    std::vector<mpfr::mpreal> fpden;
+    for (size_t i{0u}; i < nbasis.size(); ++i)
+      numPrec.push_back(53ul);
+    for (size_t i{0u}; i < dbasis.size(); ++i)
+      denPrec.push_back(53ul);
+
+    // function handles for the approximation r = p/q
+    std::function<mpfr::mpreal(mpfr::mpreal)> q;
+    std::function<mpfr::mpreal(mpfr::mpreal)> p;
+    for (int i{0}; i < num.size(); ++i) {
+      num[i] = numB[i] * scaleFactor;
+    }
+
+    for (int i{0}; i < den.size(); ++i) {
+      den[i] = denB[i] * scaleFactor;
+    }
+
+    q = [dbasis, den](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < den.size(); ++i)
+        res += den[i] * dbasis[i](var);
+      return res;
+    };
+
+    p = [nbasis, num](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < num.size(); ++i)
+        res += num[i] * nbasis[i](var);
+      return res;
+    };
+
+    std::function<mpfr::mpreal(mpfr::mpreal)> err;
+    err = [f, w, p, q](mpfr::mpreal var) -> mpfr::mpreal {
+      return w(var) * (f(var) - p(var) / q(var));
+    };
+
+    // the index of the normalizing coefficient needed for constructing
+    // the CVP lattice problem solved inside fpminimax
+    size_t idx{0u};
+    for (size_t i{0u}; i < den.size(); ++i) {
+      if (den[i] == scaleFactor || den[i] == -scaleFactor)
+        idx = i;
+    }
+
+    std::function<mpfr::mpreal(mpfr::mpreal)> r;
+
+    r = [p, q](mpfr::mpreal var) -> mpfr::mpreal { return p(var) / q(var); };
+
+    // the fpminimax algorithm that will compute the approximation
+    // with floating point coefficients
+    fpminimax(fpnum, fpden, r, w, nbasis, dbasis, num, den, numPrec, denPrec,
+              dom, idx, prec);
+
+    // compute error of the fpminimax-type result
+    std::function<mpfr::mpreal(mpfr::mpreal)> qfp;
+    std::function<mpfr::mpreal(mpfr::mpreal)> pfp;
+
+    qfp = [dbasis, fpden](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < fpden.size(); ++i)
+        res += fpden[i] * dbasis[i](var);
+      return res;
+    };
+
+    pfp = [nbasis, fpnum](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < fpnum.size(); ++i)
+        res += fpnum[i] * nbasis[i](var);
+      return res;
+    };
+
+    std::function<mpfr::mpreal(mpfr::mpreal)> errfp;
+    errfp = [f, w, pfp, qfp](mpfr::mpreal var) -> mpfr::mpreal {
+      return w(var) * (f(var) - pfp(var) / qfp(var));
+    };
+    // std::string fpName = "fpminimax";
+    // plotFunc(fpName, errfp, dom.first, dom.second, prec);
+    std::pair<mpfr::mpreal, mpfr::mpreal> errfp_norm;
+    infnorm(errfp_norm, errfp, dom);
+    std::cout << "scale factor = " << scaleFactor.toString("%.4RNf");
+    std::cout << " fpminimax error = " << errfp_norm.second << std::endl;
+    scaleFactor = 1.0 + (double)(itx + 1) / (double)vals;
+  }
+}
+
 void rminimax(int argc, char *argv[], mp_prec_t prec) {
   std::pair<mpfr::mpreal, mpfr::mpreal> dom =
       std::make_pair(mpfr::mpreal(-1), mpfr::mpreal(1));
@@ -939,6 +1079,8 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
       std::cout << "Starting fpminimax...\n";
     fpminimax(fpnum, fpden, r, w, nbasis, dbasis, num, den, numPrec, denPrec,
               dom, idx, prec);
+    // fpirls(fpnum, fpden, f, r, w, nbasis, dbasis, num, den, numPrec, denPrec,
+    //       dom, idx, 40u, prec);
     if (useLog)
       std::cout << "Finished fpminimax...\n";
 
@@ -1070,6 +1212,7 @@ int main(int argc, char *argv[]) {
   mpf_QSset_precision(prec);
 
   rminimax(argc, argv, prec);
+  // example2(prec);
 
   QSexactClear();
 }

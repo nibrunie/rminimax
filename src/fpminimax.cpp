@@ -111,6 +111,63 @@ void generate_cvp(fplll::ZZ_mat<mpz_t> &B, std::vector<mpz_class> &t,
   mpreal::set_default_prec(prev);
 }
 
+void generate_cvp(fplll::ZZ_mat<mpz_t> &B, std::vector<mpz_class> &t,
+                  std::vector<mpfr::mpreal> const &x,
+                  std::vector<mpfr::mpreal> const &fx,
+                  std::vector<mpfr::mpreal> const &wx,
+                  std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> &basis,
+                  mp_prec_t prec) {
+  using mpfr::mpreal;
+  mp_prec_t prev = mpreal::get_default_prec();
+  mpreal::set_default_prec(prec);
+
+  // store the min value for an exponent used to represent
+  // in mantissa-exponent form the lattice basis and the
+  // vector T to be approximated using the LLL approach
+  mp_exp_t scale_exp = 0;
+  // determine the scaling factor for the basis vectors and
+  // the unknown vector to be approximated by T
+  std::pair<mpz_class, mp_exp_t> decomp;
+
+  for (std::size_t i{0u}; i < x.size(); ++i) {
+    decomp = mpfr_decomp(fx[i]);
+    if (decomp.second < scale_exp)
+      scale_exp = decomp.second;
+    for (std::size_t j{0u}; j < basis.size(); ++j) {
+      decomp = mpfr_decomp(wx[i] * basis[j](x[i]));
+      if (decomp.second < scale_exp)
+        scale_exp = decomp.second;
+    }
+  }
+
+  // scale the basis and vector t
+  B.resize(basis.size(), x.size());
+  mpz_t ibuff;
+  mpz_init(ibuff);
+
+  for (std::size_t i{0u}; i < basis.size(); ++i)
+    for (std::size_t j{0u}; j < x.size(); ++j) {
+      decomp = mpfr_decomp(wx[j] * basis[i](x[j]));
+      decomp.second -= scale_exp;
+      mpz_ui_pow_ui(ibuff, 2u, (unsigned int)decomp.second);
+      mpz_mul(ibuff, ibuff, decomp.first.get_mpz_t());
+      mpz_set(B(i, j).get_data(), ibuff);
+    }
+  t.clear();
+  for (std::size_t i{0u}; i < fx.size(); ++i) {
+    decomp = mpfr_decomp(fx[i]);
+    decomp.second -= scale_exp;
+    mpz_ui_pow_ui(ibuff, 2u, (unsigned int)decomp.second);
+    mpz_mul(ibuff, ibuff, decomp.first.get_mpz_t());
+    t.push_back(mpz_class(ibuff));
+  }
+
+  // clean-up
+  mpz_clear(ibuff);
+
+  mpreal::set_default_prec(prev);
+}
+
 void kannan_embedding(fplll::ZZ_mat<mpz_t> &B, std::vector<mpz_class> &t) {
 
   int cols = B.get_cols() + 1;
@@ -226,6 +283,235 @@ void factorize(
   fmpz_poly_factor_clear(fac);
   fmpz_poly_clear(p);
   mpz_clear(ibuff);
+  mpreal::set_default_prec(prev);
+}
+
+void fpirls(
+    std::vector<mpfr::mpreal> &fpnum, std::vector<mpfr::mpreal> &fpden,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &f,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &r,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &w,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> const &nbasis,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> const &dbasis,
+    std::vector<mpfr::mpreal> const &num, std::vector<mpfr::mpreal> const &den,
+    std::vector<mp_prec_t> const &nump, std::vector<mp_prec_t> const &denp,
+    std::pair<mpfr::mpreal, mpfr::mpreal> const &dom, std::size_t idx,
+    std::size_t itcount, mp_prec_t prec) {
+  using mpfr::mpreal;
+  mp_prec_t prev = mpreal::get_default_prec();
+  mpreal::set_default_prec(prec);
+
+  std::vector<mp_exp_t> numexp;
+  std::vector<mp_exp_t> denexp;
+
+  numexp.resize(nump.size());
+  denexp.resize(denp.size());
+
+  for (size_t i{0u}; i < num.size(); ++i) {
+    mpfr::mpreal buff = num[i];
+    buff.set_prec(nump[i], GMP_RNDN);
+    auto decomp = mpfr_decomp(buff);
+    numexp[i] = decomp.second;
+  }
+
+  for (size_t i{0u}; i < den.size(); ++i) {
+    mpfr::mpreal buff = den[i];
+    buff.set_prec(denp[i], GMP_RNDN);
+    auto decomp = mpfr_decomp(buff);
+    denexp[i] = decomp.second;
+  }
+
+  std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> bs;
+  for (size_t i{0u}; i < nbasis.size(); ++i)
+    bs.push_back([nbasis, i, w, numexp](mpfr::mpreal x) -> mpfr::mpreal {
+      return (w(x) * nbasis[i](x)) << numexp[i];
+    });
+
+  for (size_t i{0u}; i < idx; ++i)
+    bs.push_back([r, dbasis, i, w, denexp](mpfr::mpreal x) -> mpfr::mpreal {
+      return (-r(x) * w(x) * dbasis[i](x)) << denexp[i];
+    });
+
+  for (size_t i{idx + 1u}; i < den.size(); ++i)
+    bs.push_back([r, dbasis, i, w, denexp](mpfr::mpreal x) -> mpfr::mpreal {
+      return (-r(x) * w(x) * dbasis[i](x)) << denexp[i];
+    });
+
+  std::function<mpfr::mpreal(mpfr::mpreal)> wr =
+      [r, w, dbasis, den, idx](mpfr::mpreal x) -> mpfr::mpreal {
+    return w(x) * den[idx] * r(x) * dbasis[idx](x);
+  };
+
+  std::vector<mpfr::mpreal> lllcoeffs;
+  std::vector<std::vector<mpfr::mpreal>> svpcoeffs;
+
+  std::size_t discsize = 10 * (nbasis.size() + dbasis.size());
+  std::vector<mpfr::mpreal> disc(discsize);
+  chebpts(disc, discsize);
+  chgvar(disc, disc, dom);
+
+  fpminimax_kernel(lllcoeffs, svpcoeffs, disc, wr, bs, prec);
+
+  fpnum.resize(num.size());
+  fpden.resize(den.size());
+  for (size_t i{0u}; i < num.size(); ++i) {
+    fpnum[i] = (lllcoeffs[i] << numexp[i]);
+  }
+
+  fpden[idx] = den[idx];
+  for (size_t i{0u}; i < idx; ++i) {
+    fpden[i] = (lllcoeffs[num.size() + i] << denexp[i]);
+  }
+  for (size_t i{idx + 1u}; i < den.size(); ++i) {
+    fpden[i] = (lllcoeffs[num.size() + i - 1]) << denexp[i];
+  }
+
+  std::vector<mpfr::mpreal> wd(disc.size());
+  for (auto &it : wd)
+    it = 1.0;
+
+  for (std::size_t itx{0u}; itx < itcount; ++itx) {
+    std::function<mpfr::mpreal(mpfr::mpreal)> qfp;
+    std::function<mpfr::mpreal(mpfr::mpreal)> pfp;
+
+    qfp = [dbasis, fpden](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < fpden.size(); ++i)
+        res += fpden[i] * dbasis[i](var);
+      return res;
+    };
+
+    pfp = [nbasis, fpnum](mpfr::mpreal var) -> mpfr::mpreal {
+      mpfr::mpreal res = 0;
+      for (size_t i{0u}; i < fpnum.size(); ++i)
+        res += fpnum[i] * nbasis[i](var);
+      return res;
+    };
+    std::function<mpfr::mpreal(mpfr::mpreal)> errfp;
+    errfp = [f, w, pfp, qfp](mpfr::mpreal var) -> mpfr::mpreal {
+      return w(var) * (f(var) - pfp(var) / qfp(var));
+    };
+
+    std::pair<mpfr::mpreal, mpfr::mpreal> errfp_norm;
+    infnorm(errfp_norm, errfp, dom);
+    std::cout << "fpminimax approximation error                    = "
+              << errfp_norm.second << std::endl;
+
+    for (std::size_t i{0u}; i < wd.size(); ++i) {
+      wd[i] *= mpfr::abs(errfp(disc[i]));
+    }
+
+    bs.clear();
+    for (size_t i{0u}; i < nbasis.size(); ++i)
+      bs.push_back([nbasis, i, w, numexp](mpfr::mpreal x) -> mpfr::mpreal {
+        return (w(x) * nbasis[i](x)) << numexp[i];
+      });
+
+    for (size_t i{0u}; i < idx; ++i)
+      bs.push_back([f, dbasis, i, w, denexp](mpfr::mpreal x) -> mpfr::mpreal {
+        return (-f(x) * w(x) * dbasis[i](x)) << denexp[i];
+      });
+
+    for (size_t i{idx + 1u}; i < den.size(); ++i)
+      bs.push_back([f, dbasis, i, w, denexp](mpfr::mpreal x) -> mpfr::mpreal {
+        return (-f(x) * w(x) * dbasis[i](x)) << denexp[i];
+      });
+
+    std::function<mpfr::mpreal(mpfr::mpreal)> wf =
+        [f, w, dbasis, den, idx](mpfr::mpreal x) -> mpfr::mpreal {
+      return w(x) * den[idx] * f(x) * dbasis[idx](x);
+    };
+
+    fpirls_kernel(lllcoeffs, svpcoeffs, disc, wd, wf, bs, prec);
+
+    fpnum.resize(num.size());
+    fpden.resize(den.size());
+    for (size_t i{0u}; i < num.size(); ++i) {
+      fpnum[i] = (lllcoeffs[i] << numexp[i]);
+    }
+
+    fpden[idx] = den[idx];
+    for (size_t i{0u}; i < idx; ++i) {
+      fpden[i] = (lllcoeffs[num.size() + i] << denexp[i]);
+    }
+    for (size_t i{idx + 1u}; i < den.size(); ++i) {
+      fpden[i] = (lllcoeffs[num.size() + i - 1]) << denexp[i];
+    }
+  }
+}
+
+void fpirls_kernel(
+    std::vector<mpfr::mpreal> &lllcoeffs,
+    std::vector<std::vector<mpfr::mpreal>> &svpcoeffs,
+    std::vector<mpfr::mpreal> const &x, std::vector<mpfr::mpreal> const &wx,
+    std::function<mpfr::mpreal(mpfr::mpreal)> const &target,
+    std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> &basis,
+    mp_prec_t prec) {
+  using mpfr::mpreal;
+  mp_prec_t prev = mpreal::get_default_prec();
+  mpreal::set_default_prec(prec);
+  std::size_t n = basis.size();
+
+  std::vector<mpfr::mpreal> fx;
+  fx.resize(x.size());
+
+  for (std::size_t i{0u}; i < x.size(); ++i) {
+    fx[i] = wx[i] * target(x[i]);
+  }
+
+  fplll::ZZ_mat<mpz_t> B;
+  std::vector<mpz_class> t;
+  generate_cvp(B, t, x, fx, wx, basis, prec);
+  kannan_embedding(B, t);
+
+  fplll::ZZ_mat<mpz_t> U(B.get_rows(), B.get_cols());
+  fplll::lll_reduction(B, U, 0.99, 0.51);
+  int xdp1 = (int)mpz_get_si(U(U.get_rows() - 1, U.get_cols() - 1).get_data());
+
+  std::vector<mpz_class> illlcoeffs;
+  std::vector<std::vector<mpz_class>> isvpcoeffs(n);
+  xdp1 = (int)mpz_get_si(U(U.get_rows() - 1, U.get_cols() - 1).get_data());
+  mpz_t coeffaux;
+  mpz_init(coeffaux);
+  switch (xdp1) {
+  case 1:
+    for (int i{0}; i < U.get_cols() - 1; ++i) {
+      mpz_neg(coeffaux, U(U.get_rows() - 1, i).get_data());
+      illlcoeffs.push_back(mpz_class(coeffaux));
+      for (int j{0}; j < (int)n; ++j) {
+        mpz_set(coeffaux, U(j, i).get_data());
+        isvpcoeffs[j].push_back(mpz_class(coeffaux));
+      }
+    }
+    break;
+  case -1:
+    for (int i = 0; i < U.get_cols() - 1; ++i) {
+      illlcoeffs.push_back(mpz_class(U(U.get_rows() - 1, i).get_data()));
+      for (int j = 0; j < (int)n; ++j) {
+        mpz_set(coeffaux, U(j, i).get_data());
+        isvpcoeffs[j].push_back(mpz_class(coeffaux));
+      }
+    }
+    break;
+  default:
+    std::cout << "Failed to generate the approximation\n";
+    exit(EXIT_FAILURE);
+  }
+  mpz_clear(coeffaux);
+
+  svpcoeffs.resize(isvpcoeffs.size());
+  lllcoeffs.resize(illlcoeffs.size());
+
+  for (std::size_t i{0u}; i < illlcoeffs.size(); ++i) {
+
+    mpreal newcoeff;
+    lllcoeffs[i] = illlcoeffs[i].get_str();
+    for (std::size_t j{0u}; j < svpcoeffs.size(); ++j) {
+      mpreal buffer = isvpcoeffs[j][i].get_str();
+      svpcoeffs[j].push_back(buffer);
+    }
+  }
+
   mpreal::set_default_prec(prev);
 }
 

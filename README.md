@@ -47,6 +47,7 @@ General options:
 Option:                       Meaning:
 --help                        Prints this help.
 --log                         Prints log information during execution.
+--scalingSearch               Optionally searches for a better scaling factor.
 --function=[string]           The function to approximate.
 --weight=[string]             Weight function. By default this is
                               the reciprocal of the function.

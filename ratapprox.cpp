@@ -35,6 +35,8 @@ void printShortHelp() {
       << "--help                        Prints this help.\n"
       << "--log                         Prints log information during "
          "execution.\n"
+      << "--scalingSearch               Optionally searches for a better "
+         "scaling factor.\n"
       << "--function=[string]           The function to approximate.\n"
       << "--weight=[string]             Weight function. By default this is\n"
       << "                              the reciprocal of the function.\n"
@@ -252,6 +254,7 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
   bool useCustomDenBasis{false};
   bool denBasisEven{false};
   bool useLog{false};
+  bool allowScaling{false};
   bool factorizationEnabled{false};
 
   bool useCustomDenFormat{false};
@@ -282,6 +285,8 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
       printShortHelp();
       QSexactClear();
       exit(-1);
+    } else if (getCmdParameter(argv[i], "--scalingSearch", value)) {
+      allowScaling = true;
     } else if (getCmdParameter(argv[i], "--log", value)) {
       useLog = true;
     } else if (getCmdParameter(argv[i], "--dom=", value)) {
@@ -935,12 +940,103 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
 
     r = [p, q](mpfr::mpreal var) -> mpfr::mpreal { return p(var) / q(var); };
 
-    if (useLog)
-      std::cout << "Starting fpminimax...\n";
-    fpminimax(fpnum, fpden, r, w, nbasis, dbasis, num, den, numPrec, denPrec,
-              dom, idx, prec);
-    if (useLog)
-      std::cout << "Finished fpminimax...\n";
+    if (!allowScaling) {
+      if (useLog)
+        std::cout << "Starting fpminimax...\n";
+      fpminimax(fpnum, fpden, r, w, nbasis, dbasis, num, den, numPrec, denPrec,
+                dom, idx, prec);
+      if (useLog)
+        std::cout << "Finished fpminimax...\n";
+    } else {
+      if (useLog)
+        std::cout << "Starting scaling factor exploration...\n";
+      mpfr::mpreal scaleFactor = 1.0;
+      std::size_t vals = 1000;
+      std::vector<mpfr::mpreal> qsnum, snum;
+      std::vector<mpfr::mpreal> qsden, sden;
+      snum.resize(num.size());
+      sden.resize(den.size());
+      mpfr::mpreal minerr;
+      for (int itx{0}; itx < vals - 1; ++itx) {
+        std::function<mpfr::mpreal(mpfr::mpreal)> sp, sq;
+        for (std::size_t i{0u}; i < num.size(); ++i) {
+          snum[i] = num[i] * scaleFactor;
+        }
+        for (std::size_t i{0}; i < den.size(); ++i) {
+          sden[i] = den[i] * scaleFactor;
+        }
+
+        sq = [dbasis, sden](mpfr::mpreal var) -> mpfr::mpreal {
+          mpfr::mpreal res = 0;
+          for (std::size_t i{0u}; i < sden.size(); ++i)
+            res += sden[i] * dbasis[i](var);
+          return res;
+        };
+        sp = [nbasis, snum](mpfr::mpreal var) -> mpfr::mpreal {
+          mpfr::mpreal res = 0;
+          for (std::size_t i{0u}; i < snum.size(); ++i)
+            res += snum[i] * nbasis[i](var);
+          return res;
+        };
+
+        // the index of the normalizing coefficient needed for constructing
+        // the CVP lattice problem solved inside fpminimax
+        std::size_t idx{0u};
+        for (size_t i{0u}; i < sden.size(); ++i) {
+          if (sden[i] == scaleFactor || sden[i] == -scaleFactor)
+            idx = i;
+        }
+
+        std::function<mpfr::mpreal(mpfr::mpreal)> r;
+        r = [sp, sq](mpfr::mpreal var) -> mpfr::mpreal {
+          return sp(var) / sq(var);
+        };
+
+        fpminimax(qsnum, qsden, r, w, nbasis, dbasis, snum, sden, numPrec,
+                  denPrec, dom, idx, prec);
+
+        // compute error of the fpminimax-type result
+        std::function<mpfr::mpreal(mpfr::mpreal)> qsp;
+        std::function<mpfr::mpreal(mpfr::mpreal)> qsq;
+
+        qsq = [dbasis, qsden](mpfr::mpreal var) -> mpfr::mpreal {
+          mpfr::mpreal res = 0;
+          for (size_t i{0u}; i < qsden.size(); ++i)
+            res += qsden[i] * dbasis[i](var);
+          return res;
+        };
+
+        qsp = [nbasis, qsnum](mpfr::mpreal var) -> mpfr::mpreal {
+          mpfr::mpreal res = 0;
+          for (size_t i{0u}; i < qsnum.size(); ++i)
+            res += qsnum[i] * nbasis[i](var);
+          return res;
+        };
+
+        std::function<mpfr::mpreal(mpfr::mpreal)> errfp;
+        errfp = [f, w, qsp, qsq](mpfr::mpreal var) -> mpfr::mpreal {
+          return w(var) * (f(var) - qsp(var) / qsq(var));
+        };
+
+        std::pair<mpfr::mpreal, mpfr::mpreal> qerr;
+        infnorm(qerr, errfp, dom);
+        if (itx == 0) {
+          minerr = qerr.second;
+          fpnum = qsnum;
+          fpden = qsden;
+        } else {
+          if (qerr.second < minerr) {
+            minerr = qerr.second;
+            fpnum = qsnum;
+            fpden = qsden;
+          }
+        }
+
+        scaleFactor = 1.0 + (double)(itx + 1) / (double)vals;
+      }
+      if (useLog)
+        std::cout << "Finished scaling factor exploration...\n";
+    }
 
     // compute information regarding the fpminimax result
     std::function<mpfr::mpreal(mpfr::mpreal)> qfp;

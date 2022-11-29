@@ -3,7 +3,6 @@
 
 #include <functional>
 #include <gmp.h>
-#include <mpfr.h>
 #include <mpreal.h>
 #include <string>
 #include <vector>

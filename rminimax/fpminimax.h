@@ -4,7 +4,6 @@
 #include <functional>
 #include <gmp.h>
 #include <gmpxx.h>
-#include <mpfr.h>
 #include <mpreal.h>
 #include <vector>
 

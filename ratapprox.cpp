@@ -270,7 +270,7 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
   std::string functionstr = "exp(x)";
   std::string weightstr = "1";
   std::string outfilename = "coeffs.sollya";
-  std::string coeffDisplay = "%.RNa";
+  std::string coeffDisplay = "%Ra";
 
   shuntingyard sh;
   std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> nbasis;
@@ -320,11 +320,11 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
       facformatstr = value;
     } else if (getCmdParameter(argv[i], "--dispCoeff=", value)) {
       if (strcmp("dec", value) == 0) {
-        coeffDisplay = "%.RNe";
+        coeffDisplay = "%Re";
       } else if (strcmp("bin", value) == 0) {
-        coeffDisplay = "%.RNb";
+        coeffDisplay = "%Rb";
       } else {
-        coeffDisplay = "%.RNa";
+        coeffDisplay = "%Ra";
       }
     } else {
       std::cout << "Error: Illegal option: " << argv[i] << std::endl;

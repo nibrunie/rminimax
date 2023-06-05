@@ -10,6 +10,7 @@
 #include <gmpxx.h>
 #include <iostream>
 #include <limits>
+#include <mpfr.h>
 
 extern "C" {
 #include <qsopt_ex/QSopt_ex.h>
@@ -335,32 +336,13 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
   }
 
   if (useDomArg) {
-    char leftBracket = domstream.get();
-    if (leftBracket != '[') {
-      std::cout
-          << "Error while parsing '[' in dom: Incompatible input format\n";
-      printShortHelp();
-      QSexactClear();
-      exit(-1);
-    }
-    char boundaryDelimiter;
     double left, right;
-    domstream >> std::hexfloat >> left >> boundaryDelimiter >> std::hexfloat >>
-        right;
+    int parsed = sscanf(domstream.str().c_str(), "[%la,%la]", &left, &right);
     dom.first = left;
     dom.second = right;
-    if (boundaryDelimiter != ',') {
+    if (parsed != 2) {
       std::cout
-          << "Error while parsing ',' in dom: Incompatible input format\n";
-      printShortHelp();
-      QSexactClear();
-      exit(-1);
-    }
-
-    char rightBracket = domstream.get();
-    if (rightBracket != ']') {
-      std::cout
-          << "Error while parsing ']' in dom: Incompatible input format\n";
+          << "Error while parsing values in dom: Incompatible input format\n";
       printShortHelp();
       QSexactClear();
       exit(-1);

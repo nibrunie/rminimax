@@ -345,7 +345,8 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
     }
     char boundaryDelimiter;
     double left, right;
-    domstream >> left >> boundaryDelimiter >> right;
+    domstream >> std::hexfloat >> left >> boundaryDelimiter >> std::hexfloat >>
+        right;
     dom.first = left;
     dom.second = right;
     if (boundaryDelimiter != ',') {

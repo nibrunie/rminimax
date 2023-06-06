@@ -41,6 +41,12 @@ void printShortHelp() {
       << "--function=[string]           The function to approximate.\n"
       << "--weight=[string]             Weight function. By default this is\n"
       << "                              the reciprocal of the function.\n"
+      << "--prec=uint                   Precision for internal MPFR "
+         "floating-point\n"
+      << "                              computations. It should usually be "
+         "set\n"
+      << "                              to a few hundred bits (default is "
+         "200).\n"
       << "--num=[even|odd]              Specifies if the numerator should "
          "only\n"
       << "                              contain even/odd powered monomials.\n"
@@ -241,25 +247,18 @@ void example(mp_prec_t prec) {
   std::cout << "fpminimax error = " << errfp_norm.second << std::endl;
 }
 
-void rminimax(int argc, char *argv[], mp_prec_t prec) {
+void rminimax(int argc, char *argv[]) {
+  mp_prec_t prec = 200;
+  mpfr::mpreal::set_default_prec(prec);
   std::pair<mpfr::mpreal, mpfr::mpreal> dom =
       std::make_pair(mpfr::mpreal(-1), mpfr::mpreal(1));
   std::pair<size_t, size_t> type = std::make_pair(5u, 5u);
-  bool useDomArg{false};
-  bool useTypeArg{false};
-  bool useWeightArg{false};
-  bool useCustomNumBasis{false};
-  bool EONumBasis{false};
-  bool EODenBasis{false};
-  bool numBasisEven{false};
-  bool useCustomDenBasis{false};
-  bool denBasisEven{false};
-  bool useLog{false};
-  bool allowScaling{false};
-  bool factorizationEnabled{false};
-
-  bool useCustomDenFormat{false};
-  bool useCustomNumFormat{false};
+  bool useDomArg{false}, useTypeArg{false}, useWeightArg{false},
+      useCustomNumBasis{false}, EONumBasis{false}, EODenBasis{false},
+      numBasisEven{false}, useCustomDenBasis{false}, denBasisEven{false},
+      useLog{false}, allowScaling{false}, factorizationEnabled{false},
+      useCustomDenFormat{false}, useCustomNumFormat{false},
+      useCustomInternalPrec{false};
 
   std::stringstream domstream;
   std::stringstream typestream;
@@ -272,6 +271,7 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
   std::string weightstr = "1";
   std::string outfilename = "coeffs.sollya";
   std::string coeffDisplay = "%Ra";
+  std::string precstr;
 
   shuntingyard sh;
   std::vector<std::function<mpfr::mpreal(mpfr::mpreal)>> nbasis;
@@ -293,6 +293,9 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
     } else if (getCmdParameter(argv[i], "--dom=", value)) {
       useDomArg = true;
       domstream << value;
+    } else if (getCmdParameter(argv[i], "--prec=", value)) {
+      useCustomInternalPrec = true;
+      precstr = value;
     } else if (getCmdParameter(argv[i], "--type=", value)) {
       useTypeArg = true;
       typestream << value;
@@ -334,6 +337,21 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
       exit(-1);
     }
   }
+
+  if (useCustomInternalPrec) {
+    mp_prec_t nprec = strtoul(precstr.c_str(), nullptr, 10);
+    if (nprec == 0ul) {
+      std::cout
+          << "Error while parsing value in prec: Incompatible input format\n";
+      printShortHelp();
+      QSexactClear();
+      exit(-1);
+    }
+    prec = nprec;
+  }
+
+  mpf_QSset_precision(prec);
+  mpfr::mpreal::set_default_prec(prec);
 
   if (useDomArg) {
     double left, right;
@@ -1143,12 +1161,9 @@ void rminimax(int argc, char *argv[], mp_prec_t prec) {
 }
 
 int main(int argc, char *argv[]) {
-  mp_prec_t prec = 200;
-  mpfr::mpreal::set_default_prec(prec);
   QSexactStart();
-  mpf_QSset_precision(prec);
 
-  rminimax(argc, argv, prec);
+  rminimax(argc, argv);
 
   QSexactClear();
 }

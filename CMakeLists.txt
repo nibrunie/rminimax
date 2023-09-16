@@ -28,7 +28,7 @@ set (mpfr_lib mpfr)
 set (fplll_lib fplll)
 set (qsopt_ex_lib qsopt_ex)
 set (flint2_lib flint)
-set (arb_lib arb)
+set (arb_lib flint-arb)
 
 set (gmp_header gmp.h)
 set (mpfr_header mpfr.h)

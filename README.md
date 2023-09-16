@@ -1,3 +1,8 @@
+**Original repository**: https://gitlab.inria.fr/sfilip/rminimax
+
+**Paper:** Towards Machine-Efficient Rational -Approximations of Mathematical Functions by Silviu-Ioan Filip (Inria Rennes) and Nicolas Brisebarre (CNRS) 
+[pdf](https://arith2023.arithsymposium.org/papers/Towards%20Machine-Efficient%20Rational%20$L%5E!infty$-Approximations%20of%20Mathematical%20Functions.pdf) [best paper award at ARITH 2023] 
+
 # rminimax
 
 Source code for designing flexible polynomial and rational approximations to mathematical functions.
